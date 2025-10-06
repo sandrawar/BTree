@@ -68,6 +68,93 @@ namespace BTreeNamespace
 
         public void Delete(byte[] key)
         {
+            Node node = FindNodeWithKey(key);
+            if(node == null)
+            {
+                return;
+            }
+            if (node.isLeaf)
+            {
+                DeleteKeyFromLeaf(node, key);
+            }
+            else
+            {
+                DeleteKeyFromInnerNode(node, key);
+            }
+
+        }
+
+        private Node FindNodeWithKey(byte[] key)
+        {
+            return null;
+        }
+
+        private void DeleteKeyFromLeaf(Node node, byte[] key)
+        {
+            if(node.keyCount > m)
+            {
+                int keyIdx = 0;
+                while (CompareKeys(key, node.keys[keyIdx]) != 0)  keyIdx++; 
+                for(int i = keyIdx + 1; i <= node.keyCount && i < 2 * m - 1; i++)
+                {
+                    node.keys[i] = node.keys[i + 1];
+                    node.values[i] = node.values[i + 1];
+                }
+                node.keyCount--;
+            }
+
+        }
+
+        private Node SwitchKeysWithLeaf(Node node, byte[] key)
+        {
+            int keyIdx = -1;
+            for (int i = 0; i < node.keyCount; i++)
+            {
+                if (CompareKeys(node.keys[i], key) == 0)
+                {
+                    keyIdx = i;
+                    break;
+                }
+            }
+
+            if (keyIdx == -1)
+            {
+                return null;
+            }
+
+            Node current = node.children[keyIdx];
+            if (current == null)
+            {
+                return null;
+            }
+
+            while (!current.isLeaf)
+            {
+                current = current.children[current.keyCount];
+            }
+
+            int predecessorIdx = current.keyCount - 1;
+
+            byte[] tmpKey = node.keys[keyIdx];
+            byte[] tmpVal = node.values[keyIdx];
+
+            node.keys[keyIdx] = current.keys[predecessorIdx];
+            node.values[keyIdx] = current.values[predecessorIdx];
+
+            current.keys[predecessorIdx] = tmpKey;
+            current.values[predecessorIdx] = tmpVal;
+
+            return current;
+        }
+
+
+        private void DeleteKeyFromInnerNode(Node node, byte[] key)
+        {
+            Node currNodeWithKey = SwitchKeysWithLeaf(node, key);
+            if (currNodeWithKey != null)
+            {
+                DeleteKeyFromLeaf(currNodeWithKey, key);
+            }
 
         }
 
