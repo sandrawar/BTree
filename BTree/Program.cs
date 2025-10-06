@@ -24,7 +24,7 @@ namespace BTreeDemo
 
 
             Console.WriteLine("\n Usuwanie kluczy:");
-            string[] keysToDelete = { "P", "B", "C", "F" };
+            string[] keysToDelete = { "T", "P", "B", "C", "F" };
             foreach (var key in keysToDelete)
             {
                 tree.Delete(Encoding.ASCII.GetBytes(key));
