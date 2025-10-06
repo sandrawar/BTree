@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text;
+using System.Threading.Tasks;
 using BTreeNamespace;
 
 namespace BTreeDemo
@@ -9,30 +10,56 @@ namespace BTreeDemo
         static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
-            Console.WriteLine("=== DEMO: B-Tree Implementation ===\n");
+            Console.WriteLine("=== THREAD-SAFETY TEST: B-Tree ===\n");
 
             BTree tree = new BTree();
 
-            string[] keysToAdd = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "Z", "U", "T", "P", "S", "R", "W", "X", "Y" };
+            string[] keys = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "Z", "U", "T", "P", "S", "R", "W", "X", "Y" };
 
-            foreach (var key in keysToAdd)
+            Task[] insertTasks = new Task[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
             {
-                tree.Add(Encoding.ASCII.GetBytes(key), Encoding.ASCII.GetBytes($"val_{key}"));
-                Console.WriteLine($"\n Dodano klucz: {key}");
-                tree.PrintTree();
+                string key = keys[i];
+                insertTasks[i] = Task.Run(() =>
+                {
+                    tree.Add(Encoding.ASCII.GetBytes(key), Encoding.ASCII.GetBytes($"val_{key}"));
+                    Console.WriteLine($"[Insert] {key}");
+                });
             }
 
+            Task.WaitAll(insertTasks);
 
-            Console.WriteLine("\n Usuwanie kluczy:");
+            var printTask = Task.Run(() =>
+            {
+                Console.WriteLine("\n--- Tree After Insertions ---");
+                tree.PrintTree();
+            });
+            printTask.Wait(); 
+
+
             string[] keysToDelete = { "T", "P", "B", "C", "F" };
-            foreach (var key in keysToDelete)
+            Task[] deleteTasks = new Task[keysToDelete.Length];
+            for (int i = 0; i < keysToDelete.Length; i++)
             {
-                tree.Delete(Encoding.ASCII.GetBytes(key));
-                Console.WriteLine($"\n Usunięto: {key}");
-                tree.PrintTree();
+                string key = keysToDelete[i];
+                deleteTasks[i] = Task.Run(() =>
+                {
+                    tree.Delete(Encoding.ASCII.GetBytes(key));
+                    Console.WriteLine($"[Delete] {key}");
+                });
             }
 
-            Console.WriteLine("\n=== KONIEC DEMONSTRACJI ===");
+            Task.WaitAll(deleteTasks);
+
+            var printTask2 = Task.Run(() =>
+            {
+                Console.WriteLine("\n--- Tree After Insertions ---");
+                tree.PrintTree();
+            });
+            printTask2.Wait(); 
+
+
+            Console.WriteLine("\n=== THREAD-SAFETY TEST COMPLETE ===");
             Console.ReadKey();
         }
     }
