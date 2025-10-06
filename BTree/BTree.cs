@@ -16,6 +16,7 @@ namespace BTreeNamespace
             private byte[][] _values = new byte[2 * m][];
             private int _keyCount = 0;
             private bool _isLeaf = true;
+            public ReaderWriterLock Lock = new ReaderWriterLock();
 
             public Node()
             {
@@ -94,8 +95,9 @@ namespace BTreeNamespace
                     DeleteKeyFromInnerNode(node, key);
                 }
             }
-            finally { 
-                _rwLock.ExitWriteLock(); 
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
 
         }
@@ -110,7 +112,7 @@ namespace BTreeNamespace
                     int cmp = CompareKeys(node.keys[i], key);
                     if (cmp == 0)
                     {
-                        return node; 
+                        return node;
                     }
                     if (cmp > 0)
                     {
@@ -394,25 +396,33 @@ namespace BTreeNamespace
 
         private void Add(byte[] key, byte[] value, Node node)
         {
-            for (int i = 0; i < node.keyCount; i++)
+            node.Lock.AcquireWriterLock((Timeout.Infinite));
+            try
             {
-                if (CompareKeys(node.keys[i], key) == 0)
+                for (int i = 0; i < node.keyCount; i++)
                 {
-                    node.values[i] = value;
-                    return;
+                    if (CompareKeys(node.keys[i], key) == 0)
+                    {
+                        node.values[i] = value;
+                        return;
+                    }
+                }
+
+                if (node.keyCount < 2 * m)
+                {
+                    InsertIntoNotFullNode(key, value, node);
+                }
+                else
+                {
+                    InsertIntoFullNode(key, value, node);
                 }
             }
-
-            if (node.keyCount < 2 * m)
+            finally
             {
-                InsertIntoNotFullNode(key, value, node);
+                node.Lock.ReleaseWriterLock();
             }
-            else
-            {
-                InsertIntoFullNode(key, value, node);
-            }
-
         }
+
 
         private void InsertIntoNotFullNode(byte[] key, byte[] value, Node node)
         {
@@ -514,8 +524,8 @@ namespace BTreeNamespace
         }
         private void InsertIntoParent(Node parent, byte[] key, byte[] value, Node leftChild, Node rightChild)
         {
-            int oldKeys = parent.keyCount;           
-            int totalKeys = oldKeys + 1;           
+            int oldKeys = parent.keyCount;
+            int totalKeys = oldKeys + 1;
             byte[][] tempKeys = new byte[totalKeys][];
             byte[][] tempValues = new byte[totalKeys][];
             Node[] tempChildren = new Node[totalKeys + 1];
@@ -574,7 +584,7 @@ namespace BTreeNamespace
                 return;
             }
 
-            int mid = totalKeys / 2; 
+            int mid = totalKeys / 2;
             Node right = new Node();
             right.isLeaf = parent.isLeaf;
             right.parent = parent.parent;
@@ -645,20 +655,47 @@ namespace BTreeNamespace
 
         private Node FindNeededLeafInternal(Node node, byte[] key)
         {
-            if (node.isLeaf)
+            node.Lock.AcquireWriterLock((Timeout.Infinite));
+            try
             {
-                return node;
+                if (node.isLeaf)
+                    return node;
+
+                int i = node.keyCount - 1;
+                while (i > 0 && CompareKeys(node.keys[i], key) > 0) i--;
+
+                if (node.children[i + 1] == null)
+                {
+                    node.Lock.AcquireWriterLock((Timeout.Infinite));
+                    try
+                    {
+                        if (node.children[i + 1] == null)
+                            node.children[i + 1] = new Node { parent = node };
+                    }
+                    finally
+                    {
+                        node.Lock.ReleaseWriterLock();
+                    }
+                }
+
+                Node child = node.children[i + 1];
+                child.Lock.AcquireWriterLock(Timeout.Infinite); 
+                try
+                {
+                    return FindNeededLeafInternal(child, key);
+                }
+                finally
+                {
+                    child.Lock.ReleaseWriterLock();
+                }
             }
-
-            int i = node.keyCount - 1;
-
-            while (i > 0 && CompareKeys(node.keys[i], key) > 0) i--;
-
-            if (node.children[i + 1] == null)
-                node.children[i + 1] = new Node();
-
-            return FindNeededLeafInternal(node.children[i + 1], key);
+            finally
+            {
+                node.Lock.ReleaseWriterLock();
+            }
         }
+
+
 
 
 
