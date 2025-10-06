@@ -86,20 +86,63 @@ namespace BTreeNamespace
 
         private Node FindNodeWithKey(byte[] key)
         {
+            Node node = _root;
+            while (node != null)
+            {
+                for (int i = 0; i < node.keyCount; i++)
+                {
+                    int cmp = CompareKeys(node.keys[i], key);
+                    if (cmp == 0)
+                    {
+                        return node; 
+                    }
+                    if (cmp > 0)
+                    {
+                        if (node.isLeaf) return null;
+                        node = node.children[i];
+                        goto nextIteration;
+                    }
+                }
+
+                if (node.isLeaf) return null;
+                node = node.children[node.keyCount];
+
+            nextIteration:
+                continue;
+            }
+
             return null;
         }
+
 
         private void DeleteKeyFromLeaf(Node node, byte[] key)
         {
             if(node.keyCount > m)
             {
-                int keyIdx = 0;
-                while (CompareKeys(key, node.keys[keyIdx]) != 0)  keyIdx++; 
-                for(int i = keyIdx + 1; i <= node.keyCount && i < 2 * m - 1; i++)
+                int keyIdx = -1;
+                for (int i = 0; i < node.keyCount; i++)
+                {
+                    if (CompareKeys(node.keys[i], key) == 0)
+                    {
+                        keyIdx = i;
+                        break;
+                    }
+                }
+
+                if (keyIdx == -1)
+                {
+                    return;
+                }
+
+                for (int i = keyIdx; i < node.keyCount - 1; i++)
                 {
                     node.keys[i] = node.keys[i + 1];
                     node.values[i] = node.values[i + 1];
                 }
+
+                node.keys[node.keyCount - 1] = null;
+                node.values[node.keyCount - 1] = null;
+
                 node.keyCount--;
             }
 
