@@ -1,4 +1,5 @@
-﻿using static BTreeNamespace.BTree;
+﻿using System.Diagnostics.Metrics;
+using static BTreeNamespace.BTree;
 
 namespace BTreeNamespace
 {
@@ -60,7 +61,277 @@ namespace BTreeNamespace
 
         public void Add(byte[] key, byte[] value)
         {
+            Node leaf = FindNeededLeaf(key);
+            Add(key, value, leaf);
 
+        }
+
+        private void Add(byte[] key, byte[] value, Node node)
+        {
+            for (int i = 0; i < node.keyCount; i++)
+            {
+                if (CompareKeys(node.keys[i], key) == 0)
+                {
+                    node.values[i] = value;
+                    return;
+                }
+            }
+
+            if (node.keyCount < 2 * m)
+            {
+                InsertIntoNotFullNode(key, value, node);
+            }
+            else
+            {
+                InsertIntoFullNode(key, value, node);
+            }
+
+        }
+
+        private void InsertIntoNotFullNode(byte[] key, byte[] value, Node node)
+        {
+            int i;
+            for (i = 0; i < node.keyCount; i++)
+            {
+                if (CompareKeys(node.keys[i], key) > 0)
+                {
+                    break;
+                }
+            }
+            for (int j = node.keyCount; j > i; j--)
+            {
+                node.keys[j] = node.keys[j - 1];
+                node.values[j] = node.values[j - 1];
+            }
+
+            node.keys[i] = key;
+            node.values[i] = value;
+            node.keyCount++;
+        }
+
+        private void InsertIntoFullNode(byte[] key, byte[] value, Node node)
+        {
+            byte[][] tempKeys = new byte[2 * m + 1][];
+            byte[][] tempValues = new byte[2 * m + 1][];
+            int i;
+            for (i = 0; i < 2 * m; i++)
+            {
+                tempKeys[i] = node.keys[i];
+                tempValues[i] = node.values[i];
+            }
+            tempKeys[2 * m] = key;
+            tempValues[2 * m] = value;
+
+            Array.Sort(tempKeys, tempValues, 0, 2 * m + 1, Comparer<byte[]>.Create(CompareKeys));
+
+            int mid = (2 * m + 1) / 2;
+            Node right = new Node();
+            right.isLeaf = node.isLeaf;
+            right.parent = node.parent;
+
+            if (!node.isLeaf)
+            {
+                Node[] tempChildren = new Node[2 * m + 2];
+                for (i = 0; i <= 2 * m; i++)
+                    tempChildren[i] = node.children[i];
+
+                for (i = 0; i <= mid; i++)
+                    node.children[i] = tempChildren[i];
+                for (i = mid + 1; i <= 2 * m + 1; i++)
+                {
+                    right.children[i - (mid + 1)] = tempChildren[i];
+                    if (right.children[i - (mid + 1)] != null)
+                        right.children[i - (mid + 1)].parent = right;
+                }
+                for (i = mid + 1; i <= 2 * m; i++)
+                    node.children[i] = null;
+
+                node.isLeaf = false;
+                right.isLeaf = false;
+            }
+
+            for (i = mid + 1; i < 2 * m + 1; i++)
+            {
+                right.keys[i - mid - 1] = tempKeys[i];
+                right.values[i - mid - 1] = tempValues[i];
+                right.keyCount++;
+            }
+
+            for (i = 0; i < mid; i++)
+            {
+                node.keys[i] = tempKeys[i];
+                node.values[i] = tempValues[i];
+            }
+            node.keyCount = mid;
+
+            byte[] middleKey = tempKeys[mid];
+            byte[] middleValue = tempValues[mid];
+
+            if (node.parent == null)
+            {
+                Node newRoot = new Node();
+                newRoot.isLeaf = false;
+                newRoot.keyCount = 1;
+                newRoot.keys[0] = middleKey;
+                newRoot.values[0] = middleValue;
+                newRoot.children[0] = node;
+                newRoot.children[1] = right;
+                node.parent = newRoot;
+                right.parent = newRoot;
+                _root = newRoot;
+            }
+            else
+            {
+                InsertIntoParent(node.parent, middleKey, middleValue, node, right);
+            }
+
+        }
+        private void InsertIntoParent(Node parent, byte[] key, byte[] value, Node leftChild, Node rightChild)
+        {
+            int oldKeys = parent.keyCount;           
+            int totalKeys = oldKeys + 1;           
+            byte[][] tempKeys = new byte[totalKeys][];
+            byte[][] tempValues = new byte[totalKeys][];
+            Node[] tempChildren = new Node[totalKeys + 1];
+
+            for (int c = 0; c <= oldKeys; c++)
+                tempChildren[c] = parent.children[c];
+
+            int insertPos = 0;
+            while (insertPos < oldKeys && CompareKeys(parent.keys[insertPos], key) < 0)
+                insertPos++;
+
+            for (int k = 0; k < insertPos; k++)
+            {
+                tempKeys[k] = parent.keys[k];
+                tempValues[k] = parent.values[k];
+            }
+
+            tempKeys[insertPos] = key;
+            tempValues[insertPos] = value;
+
+            for (int k = insertPos; k < oldKeys; k++)
+            {
+                tempKeys[k + 1] = parent.keys[k];
+                tempValues[k + 1] = parent.values[k];
+            }
+
+
+            tempChildren[insertPos] = leftChild;
+            tempChildren[insertPos + 1] = rightChild;
+
+            for (int c = insertPos + 1; c <= oldKeys; c++)
+            {
+                tempChildren[c + 1] = parent.children[c];
+            }
+
+            if (leftChild != null) leftChild.parent = parent;
+            if (rightChild != null) rightChild.parent = parent;
+
+            if (totalKeys <= 2 * m)
+            {
+                for (int k = 0; k < totalKeys; k++)
+                {
+                    parent.keys[k] = tempKeys[k];
+                    parent.values[k] = tempValues[k];
+                }
+                for (int c = 0; c <= totalKeys; c++)
+                    parent.children[c] = tempChildren[c];
+
+                parent.keyCount = totalKeys;
+                for (int k = parent.keyCount; k < 2 * m; k++)
+                {
+                    parent.keys[k] = null;
+                    parent.values[k] = null;
+                    parent.children[k + 1] = null;
+                }
+                return;
+            }
+
+            int mid = totalKeys / 2; 
+            Node right = new Node();
+            right.isLeaf = parent.isLeaf;
+            right.parent = parent.parent;
+
+            for (int k = 0; k < mid; k++)
+            {
+                parent.keys[k] = tempKeys[k];
+                parent.values[k] = tempValues[k];
+            }
+            parent.keyCount = mid;
+
+            for (int k = mid + 1; k < totalKeys; k++)
+            {
+                right.keys[k - (mid + 1)] = tempKeys[k];
+                right.values[k - (mid + 1)] = tempValues[k];
+                right.keyCount++;
+            }
+
+            if (!parent.isLeaf)
+            {
+                for (int c = 0; c <= mid; c++)
+                {
+                    parent.children[c] = tempChildren[c];
+                    if (parent.children[c] != null) parent.children[c].parent = parent;
+                }
+                for (int c = mid + 1; c <= totalKeys; c++)
+                {
+                    right.children[c - (mid + 1)] = tempChildren[c];
+                    if (right.children[c - (mid + 1)] != null) right.children[c - (mid + 1)].parent = right;
+                }
+                for (int c = parent.keyCount + 1; c < parent.children.Length; c++)
+                    parent.children[c] = null;
+            }
+            else
+            {
+                for (int c = parent.keyCount + 1; c < parent.children.Length; c++)
+                    parent.children[c] = null;
+            }
+
+            byte[] middleKey = tempKeys[mid];
+            byte[] middleValue = tempValues[mid];
+
+            if (parent.parent == null)
+            {
+                Node newRoot = new Node();
+                newRoot.isLeaf = false;
+                newRoot.keys[0] = middleKey;
+                newRoot.values[0] = middleValue;
+                newRoot.keyCount = 1;
+                newRoot.children[0] = parent;
+                newRoot.children[1] = right;
+                parent.parent = newRoot;
+                right.parent = newRoot;
+                _root = newRoot;
+            }
+            else
+            {
+                InsertIntoParent(parent.parent, middleKey, middleValue, parent, right);
+            }
+        }
+
+
+
+        public Node FindNeededLeaf(byte[] key)
+        {
+            return FindNeededLeafInternal(_root, key);
+        }
+
+        private Node FindNeededLeafInternal(Node node, byte[] key)
+        {
+            if (node.isLeaf)
+            {
+                return node;
+            }
+
+            int i = node.keyCount - 1;
+
+            while (i > 0 && CompareKeys(node.keys[i], key) > 0) i--;
+
+            if (node.children[i + 1] == null)
+                node.children[i + 1] = new Node();
+
+            return FindNeededLeafInternal(node.children[i + 1], key);
         }
 
         public void Delete(byte[] key)
