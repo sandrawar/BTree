@@ -66,6 +66,11 @@ namespace BTreeNamespace
 
         }
 
+        public void Delete(byte[] key)
+        {
+
+        }
+
         private void Add(byte[] key, byte[] value, Node node)
         {
             for (int i = 0; i < node.keyCount; i++)
@@ -334,10 +339,6 @@ namespace BTreeNamespace
             return FindNeededLeafInternal(node.children[i + 1], key);
         }
 
-        public void Delete(byte[] key)
-        {
-
-        }
 
 
         private int CompareKeys(byte[] a, byte[] b)
