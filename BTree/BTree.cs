@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.Metrics;
+using System.Threading;
 using static BTreeNamespace.BTree;
 
 namespace BTreeNamespace
@@ -51,6 +52,7 @@ namespace BTreeNamespace
         }
 
         private Node _root;
+        private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
 
         public BTree()
         {
@@ -61,25 +63,39 @@ namespace BTreeNamespace
 
         public void Add(byte[] key, byte[] value)
         {
-            Node leaf = FindNeededLeaf(key);
-            Add(key, value, leaf);
-
+            _rwLock.EnterWriteLock();
+            try
+            {
+                Node leaf = FindNeededLeaf(key);
+                Add(key, value, leaf);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
         }
 
         public void Delete(byte[] key)
         {
-            Node node = FindNodeWithKey(key);
-            if(node == null)
+            _rwLock.EnterWriteLock();
+            try
             {
-                return;
+                Node node = FindNodeWithKey(key);
+                if (node == null)
+                {
+                    return;
+                }
+                if (node.isLeaf)
+                {
+                    DeleteKeyFromLeaf(node, key);
+                }
+                else
+                {
+                    DeleteKeyFromInnerNode(node, key);
+                }
             }
-            if (node.isLeaf)
-            {
-                DeleteKeyFromLeaf(node, key);
-            }
-            else
-            {
-                DeleteKeyFromInnerNode(node, key);
+            finally { 
+                _rwLock.ExitWriteLock(); 
             }
 
         }
