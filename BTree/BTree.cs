@@ -66,6 +66,316 @@ namespace BTreeNamespace
 
         }
 
+        public void Delete(byte[] key)
+        {
+            Node node = FindNodeWithKey(key);
+            if(node == null)
+            {
+                return;
+            }
+            if (node.isLeaf)
+            {
+                DeleteKeyFromLeaf(node, key);
+            }
+            else
+            {
+                DeleteKeyFromInnerNode(node, key);
+            }
+
+        }
+
+        private Node FindNodeWithKey(byte[] key)
+        {
+            Node node = _root;
+            while (node != null)
+            {
+                for (int i = 0; i < node.keyCount; i++)
+                {
+                    int cmp = CompareKeys(node.keys[i], key);
+                    if (cmp == 0)
+                    {
+                        return node; 
+                    }
+                    if (cmp > 0)
+                    {
+                        if (node.isLeaf) return null;
+                        node = node.children[i];
+                        goto nextIteration;
+                    }
+                }
+
+                if (node.isLeaf) return null;
+                node = node.children[node.keyCount];
+
+            nextIteration:
+                continue;
+            }
+
+            return null;
+        }
+
+
+        private void DeleteKeyFromLeaf(Node node, byte[] key)
+        {
+            int keyIdx = -1;
+            for (int i = 0; i < node.keyCount; i++)
+            {
+                if (CompareKeys(node.keys[i], key) == 0)
+                {
+                    keyIdx = i;
+                    break;
+                }
+            }
+            if (keyIdx == -1) return;
+
+            for (int i = keyIdx; i < node.keyCount - 1; i++)
+            {
+                node.keys[i] = node.keys[i + 1];
+                node.values[i] = node.values[i + 1];
+            }
+
+            node.keys[node.keyCount - 1] = null;
+            node.values[node.keyCount - 1] = null;
+            node.keyCount--;
+
+            if (node == _root || node.keyCount >= m) return;
+
+            BalanseTreeFromNode(node);
+        }
+
+
+        private void BalanseTreeFromNode(Node node)
+        {
+            Node parent = node.parent;
+            if (parent == null) return;
+
+            int idxInParent = 0;
+            while (idxInParent <= parent.keyCount && parent.children[idxInParent] != node)
+                idxInParent++;
+
+            Node leftSibling = (idxInParent > 0) ? parent.children[idxInParent - 1] : null;
+            Node rightSibling = (idxInParent < parent.keyCount) ? parent.children[idxInParent + 1] : null;
+
+            if (leftSibling != null && leftSibling.keyCount > m)
+            {
+                for (int i = node.keyCount; i > 0; i--)
+                {
+                    node.keys[i] = node.keys[i - 1];
+                    node.values[i] = node.values[i - 1];
+                }
+
+                if (!node.isLeaf)
+                {
+                    for (int c = node.keyCount + 1; c > 0; c--)
+                        node.children[c] = node.children[c - 1];
+                }
+
+                node.keys[0] = parent.keys[idxInParent - 1];
+                node.values[0] = parent.values[idxInParent - 1];
+                node.keyCount++;
+
+                parent.keys[idxInParent - 1] = leftSibling.keys[leftSibling.keyCount - 1];
+                parent.values[idxInParent - 1] = leftSibling.values[leftSibling.keyCount - 1];
+
+                if (!leftSibling.isLeaf)
+                {
+                    Node moved = leftSibling.children[leftSibling.keyCount];
+                    node.children[0] = moved;
+                    if (moved != null) moved.parent = node;
+                    leftSibling.children[leftSibling.keyCount] = null;
+                }
+
+                leftSibling.keys[leftSibling.keyCount - 1] = null;
+                leftSibling.values[leftSibling.keyCount - 1] = null;
+                leftSibling.keyCount--;
+
+                ClearNodeSlots(leftSibling);
+                ClearNodeSlots(node);
+                return;
+            }
+
+            if (rightSibling != null && rightSibling.keyCount > m)
+            {
+                node.keys[node.keyCount] = parent.keys[idxInParent];
+                node.values[node.keyCount] = parent.values[idxInParent];
+
+                if (!rightSibling.isLeaf)
+                {
+                    Node moved = rightSibling.children[0];
+                    node.children[node.keyCount + 1] = moved;
+                    if (moved != null) moved.parent = node;
+                }
+
+                node.keyCount++;
+
+                parent.keys[idxInParent] = rightSibling.keys[0];
+                parent.values[idxInParent] = rightSibling.values[0];
+
+                for (int i = 0; i < rightSibling.keyCount - 1; i++)
+                {
+                    rightSibling.keys[i] = rightSibling.keys[i + 1];
+                    rightSibling.values[i] = rightSibling.values[i + 1];
+                }
+                if (!rightSibling.isLeaf)
+                {
+                    for (int c = 0; c < rightSibling.keyCount; c++)
+                        rightSibling.children[c] = rightSibling.children[c + 1];
+                    rightSibling.children[rightSibling.keyCount] = null;
+                }
+
+                rightSibling.keys[rightSibling.keyCount - 1] = null;
+                rightSibling.values[rightSibling.keyCount - 1] = null;
+                rightSibling.keyCount--;
+
+                ClearNodeSlots(rightSibling);
+                ClearNodeSlots(node);
+                return;
+            }
+
+            if (leftSibling != null)
+            {
+                MergeNodes(parent, idxInParent - 1, leftSibling, node);
+            }
+            else if (rightSibling != null)
+            {
+                MergeNodes(parent, idxInParent, node, rightSibling);
+            }
+
+            if (parent == _root)
+            {
+                if (parent.keyCount == 0 && !parent.isLeaf)
+                {
+                    _root = parent.children[0];
+                    if (_root != null) _root.parent = null;
+                }
+            }
+            else if (parent.keyCount < m)
+            {
+                BalanseTreeFromNode(parent);
+            }
+        }
+
+
+        private void MergeNodes(Node parent, int parentKeyIdx, Node left, Node right)
+        {
+            int leftOldCount = left.keyCount;
+
+            left.keys[leftOldCount] = parent.keys[parentKeyIdx];
+            left.values[leftOldCount] = parent.values[parentKeyIdx];
+            left.keyCount = leftOldCount + 1;
+
+            if (!left.isLeaf)
+            {
+                for (int c = 0; c <= right.keyCount; c++)
+                {
+                    left.children[leftOldCount + 1 + c] = right.children[c];
+                    if (left.children[leftOldCount + 1 + c] != null)
+                        left.children[leftOldCount + 1 + c].parent = left;
+                }
+            }
+
+            for (int i = 0; i < right.keyCount; i++)
+            {
+                left.keys[left.keyCount + i] = right.keys[i];
+                left.values[left.keyCount + i] = right.values[i];
+            }
+            left.keyCount += right.keyCount;
+
+            for (int i = parentKeyIdx; i < parent.keyCount - 1; i++)
+            {
+                parent.keys[i] = parent.keys[i + 1];
+                parent.values[i] = parent.values[i + 1];
+                parent.children[i + 1] = parent.children[i + 2];
+            }
+
+            parent.keys[parent.keyCount - 1] = null;
+            parent.values[parent.keyCount - 1] = null;
+            parent.children[parent.keyCount] = null;
+            parent.keyCount--;
+
+            for (int i = 0; i < right.keys.Length; i++) right.keys[i] = null;
+            for (int i = 0; i < right.values.Length; i++) right.values[i] = null;
+            for (int i = 0; i < right.children.Length; i++) right.children[i] = null;
+            right.keyCount = 0;
+            right.parent = null;
+
+            if (parent == _root && parent.keyCount == 0)
+            {
+                _root = left;
+                if (_root != null) _root.parent = null;
+            }
+
+            ClearNodeSlots(left);
+            ClearNodeSlots(parent);
+        }
+
+        private void ClearNodeSlots(Node node)
+        {
+            for (int k = node.keyCount; k < 2 * m; k++)
+            {
+                node.keys[k] = null;
+                node.values[k] = null;
+            }
+            for (int c = node.keyCount + 1; c < node.children.Length; c++)
+                node.children[c] = null;
+        }
+
+
+
+
+        private Node SwitchKeysWithLeaf(Node node, byte[] key)
+        {
+            int keyIdx = -1;
+            for (int i = 0; i < node.keyCount; i++)
+            {
+                if (CompareKeys(node.keys[i], key) == 0)
+                {
+                    keyIdx = i;
+                    break;
+                }
+            }
+
+            if (keyIdx == -1)
+            {
+                return null;
+            }
+
+            Node current = node.children[keyIdx];
+            if (current == null)
+            {
+                return null;
+            }
+
+            while (!current.isLeaf)
+            {
+                current = current.children[current.keyCount];
+            }
+
+            int predecessorIdx = current.keyCount - 1;
+
+            byte[] tmpKey = node.keys[keyIdx];
+            byte[] tmpVal = node.values[keyIdx];
+
+            node.keys[keyIdx] = current.keys[predecessorIdx];
+            node.values[keyIdx] = current.values[predecessorIdx];
+
+            current.keys[predecessorIdx] = tmpKey;
+            current.values[predecessorIdx] = tmpVal;
+
+            return current;
+        }
+
+
+        private void DeleteKeyFromInnerNode(Node node, byte[] key)
+        {
+            Node currNodeWithKey = SwitchKeysWithLeaf(node, key);
+            if (currNodeWithKey != null)
+            {
+                DeleteKeyFromLeaf(currNodeWithKey, key);
+            }
+
+        }
+
         private void Add(byte[] key, byte[] value, Node node)
         {
             for (int i = 0; i < node.keyCount; i++)
@@ -334,10 +644,6 @@ namespace BTreeNamespace
             return FindNeededLeafInternal(node.children[i + 1], key);
         }
 
-        public void Delete(byte[] key)
-        {
-
-        }
 
 
         private int CompareKeys(byte[] a, byte[] b)
