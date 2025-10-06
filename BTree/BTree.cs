@@ -1,4 +1,5 @@
-﻿using static BTreeNamespace.BTree;
+﻿using System.Diagnostics.Metrics;
+using static BTreeNamespace.BTree;
 
 namespace BTreeNamespace
 {
@@ -60,7 +61,30 @@ namespace BTreeNamespace
 
         public void Add(byte[] key, byte[] value)
         {
+            Node leaf = FindNeededLeaf(key);
 
+        }
+
+        public Node FindNeededLeaf(byte[] key)
+        {
+            return FindNeededLeafInternal(_root, key);
+        }
+
+        private Node FindNeededLeafInternal(Node node, byte[] key)
+        {
+            if (node.isLeaf)
+            {
+                return node;
+            }
+
+            int i = node.keyCount - 1;
+
+            while (i > 0 && CompareKeys(node.keys[i], key) > 0) i--;
+
+            if (node.children[i + 1] == null)
+                node.children[i + 1] = new Node();
+
+            return FindNeededLeafInternal(node.children[i + 1], key);
         }
 
         public void Delete(byte[] key)
